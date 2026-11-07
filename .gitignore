@@ -1,0 +1,10 @@
+.venv/
+.venv-crew/
+.venv-adk/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+data/kisan.db
+logs/

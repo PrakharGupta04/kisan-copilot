@@ -1,0 +1,4 @@
+langfuse>=3,<4
+openinference-instrumentation-crewai
+openinference-instrumentation-google-adk
+openinference-instrumentation-litellm
