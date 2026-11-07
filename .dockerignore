@@ -1,0 +1,9 @@
+.venv/
+.venv-crew/
+.venv-adk/
+.git/
+logs/
+data/kisan.db
+__pycache__/
+*.pyc
+.env
