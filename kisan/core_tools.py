@@ -1,4 +1,5 @@
 """Pure tool logic shared by the MCP server, the ADK agent and the rule-based fallback."""
+import json
 import random
 import statistics
 import time
@@ -41,6 +42,7 @@ AGMARK_NAME = {"wheat": "Wheat", "paddy": "Paddy(Dhan)(Common)", "cotton": "Cott
 INDICATIVE_MSP = {"wheat": 2585, "paddy": 2369, "cotton": 7710, "soybean": 5328, "maize": 2400, "mustard": 6200}
 BASE_PRICE = {"wheat": 2650, "paddy": 2400, "cotton": 7300, "soybean": 4600, "maize": 2150, "mustard": 6000}
 MANDI_RESOURCE = "9ef84268-d588-465a-a308-a864a43d0070"
+_SRC = {"v": "agmarknet_live"}
 
 
 @_cached(1800)
@@ -80,24 +82,41 @@ def weather_summary(lat: float, lon: float) -> WeatherSummary:
 def _live_mandi(commodity: str, state: str) -> Optional[list]:
     if not config.DATA_GOV_API_KEY:
         return None
+    snap = config.DATA_DIR / "mandi_snapshot.json"
+    key = f"{commodity}|{state}"
     try:
         r = httpx.get(
             f"https://api.data.gov.in/resource/{MANDI_RESOURCE}",
-            params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 100,
+            params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 50,
                     "filters[commodity]": commodity, "filters[state]": state},
-            timeout=12,
+            timeout=httpx.Timeout(45.0, connect=10.0),
         )
         r.raise_for_status()
-        recs = r.json().get("records", [])
         out = []
-        for x in recs:
+        for x in r.json().get("records", []):
             try:
                 out.append((float(x["modal_price"]), str(x.get("market", ""))))
             except (KeyError, ValueError, TypeError):
                 continue
-        return out or None
+        if out:
+            try:
+                data = json.loads(snap.read_text()) if snap.exists() else {}
+                data[key] = {"ts": time.time(), "records": out}
+                snap.write_text(json.dumps(data))
+            except Exception:
+                pass
+            _SRC["v"] = "agmarknet_live"
+            return out
     except Exception:
-        return None
+        pass
+    try:  # server slow or unreachable: use a recent on-disk snapshot (max 3 days old)
+        e = json.loads(snap.read_text()).get(key)
+        if e and time.time() - e["ts"] < 3 * 86400 and e["records"]:
+            _SRC["v"] = "agmarknet_cached"
+            return [(float(p), str(m)) for p, m in e["records"]]
+    except Exception:
+        pass
+    return None
 
 
 @_cached(900)
@@ -109,7 +128,7 @@ def mandi_summary(crop: str, state: str) -> MandiSummary:
     live = _live_mandi(AGMARK_NAME[key], state)
     if live:
         price = statistics.median(p for p, _ in live)
-        trend, src, n = None, "agmarknet_live", len({m for _, m in live})
+        trend, src, n = None, _SRC["v"], len({m for _, m in live})
         note = "Live modal price (Rs/quintal). No history in this feed, so no trend."
     else:
         rnd = random.Random(f"{key}-{date.today().isocalendar()[1]}")
