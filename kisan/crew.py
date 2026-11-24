@@ -97,10 +97,10 @@ def _llm_task(role, goal, backstory, description, expected, mon, usage, pyd=None
             try:
                 llm = LLM(model=model, temperature=0.1, max_tokens=2000)
                 ag = Agent(role=role, goal=goal, backstory=backstory, llm=llm, allow_delegation=False,
-                           verbose=False, max_iter=3)
+                           verbose=(os.getenv("KISAN_VERBOSE") == "1"), max_iter=3)
                 kw = {"output_pydantic": pyd} if pyd else {}
                 task = Task(description=description, expected_output=expected, agent=ag, **kw)
-                crew = Crew(agents=[ag], tasks=[task], process=Process.sequential, verbose=False,
+                crew = Crew(agents=[ag], tasks=[task], process=Process.sequential, verbose=(os.getenv("KISAN_VERBOSE") == "1"),
                             step_callback=mon.step_cb, task_callback=mon.task_cb)
                 out = crew.kickoff()
                 usage.add(out)
@@ -276,6 +276,8 @@ def _agentic(profile: dict, question, state: RunState, mon: Monitor, t0: float) 
             break
     if synth is None:
         raise RuntimeError("synthesis produced no valid structured output")
+    if '"source":"synthetic_fallback"' in evidence.get("mandi", "").replace(" ", ""):
+        synth.risks.append("Mandi prices are synthetic demo data, not live market prices.")
     stage["synthesis_s"] = round(time.perf_counter() - ts, 2)
 
     mon.counts["llm_requests"] = usage.n
@@ -289,7 +291,8 @@ def _agentic(profile: dict, question, state: RunState, mon: Monitor, t0: float) 
                  "stage_latency_s": stage, "llm_calls_today": llm_gate.calls_today()})
 
 
-def run_pipeline(farmer_id: str, question=None) -> FinalReport:
+def run_pipeline(farmer_id: str, question=None, offline: Optional[bool] = None) -> FinalReport:
+    use_offline = config.OFFLINE if offline is None else bool(offline)
     run_id = uuid.uuid4().hex[:12]
     fid = security.validate_farmer_id(farmer_id)  # guardrail 1
     q = security.screen_user_text(question)       # guardrail 2
@@ -300,19 +303,19 @@ def run_pipeline(farmer_id: str, question=None) -> FinalReport:
     state = RunState(run_id=run_id, farmer_id=fid, profile=profile)
     mon.on_tool = state.add_evidence
     t0 = time.perf_counter()
-    mon.add("start", "pipeline", farmer_id=fid, offline=config.OFFLINE, has_question=bool(q))
+    mon.add("start", "pipeline", farmer_id=fid, offline=use_offline, has_question=bool(q))
     finished = False
     try:
         with trace_run("kisan-copilot-run", farmer_id=fid, run_id=run_id):
             report = None
-            if not config.OFFLINE:
+            if not use_offline:
                 try:
                     report = _agentic(profile, q, state, mon, t0)
                 except Exception as e:
                     mon.error("agentic_pipeline", e)
                     state.errors.append(f"agentic failed: {type(e).__name__}")
             if report is None:
-                report = rules.build_report(profile, state, "offline" if config.OFFLINE else "rule_based_fallback")
+                report = rules.build_report(profile, state, "offline" if use_offline else "rule_based_fallback")
         report.metrics.update(latency_s=round(time.perf_counter() - t0, 2), errors=state.errors,
                               tool_calls=mon.counts["tool_calls"], log_file=str(mon.path.name))
         report = security.finalize_report(report)  # guardrail 3 + HITL

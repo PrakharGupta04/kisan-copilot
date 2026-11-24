@@ -79,17 +79,32 @@ def weather_summary(lat: float, lon: float) -> WeatherSummary:
                           min_temp_c=round(min(tmin), 1) if tmin else 0.0, risk_level=risk, notes=notes)
 
 
+def _snap_get(snap, key, max_age):
+    try:
+        e = json.loads(snap.read_text()).get(key)
+        if e and e["records"] and time.time() - e["ts"] < max_age:
+            return [(float(p), str(m)) for p, m in e["records"]]
+    except Exception:
+        pass
+    return None
+
+
 def _live_mandi(commodity: str, state: str) -> Optional[list]:
     if not config.DATA_GOV_API_KEY:
         return None
     snap = config.DATA_DIR / "mandi_snapshot.json"
     key = f"{commodity}|{state}"
+    fresh = _snap_get(snap, key, 12 * 3600)  # fresh snapshot: no network wait at all
+    if fresh:
+        _SRC["v"] = "agmarknet_cached"
+        return fresh
     try:
         r = httpx.get(
             f"https://api.data.gov.in/resource/{MANDI_RESOURCE}",
-            params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 50,
+            params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 10,
                     "filters[commodity]": commodity, "filters[state]": state},
-            timeout=httpx.Timeout(45.0, connect=10.0),
+            headers={"User-Agent": "kisan-copilot/1.0", "Accept": "*/*"},
+            timeout=httpx.Timeout(15.0, connect=5.0),
         )
         r.raise_for_status()
         out = []
@@ -109,13 +124,10 @@ def _live_mandi(commodity: str, state: str) -> Optional[list]:
             return out
     except Exception:
         pass
-    try:  # server slow or unreachable: use a recent on-disk snapshot (max 3 days old)
-        e = json.loads(snap.read_text()).get(key)
-        if e and time.time() - e["ts"] < 3 * 86400 and e["records"]:
-            _SRC["v"] = "agmarknet_cached"
-            return [(float(p), str(m)) for p, m in e["records"]]
-    except Exception:
-        pass
+    old = _snap_get(snap, key, 3 * 86400)  # server slow or down: older snapshot (max 3 days)
+    if old:
+        _SRC["v"] = "agmarknet_cached"
+        return old
     return None
 
 

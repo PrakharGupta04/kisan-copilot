@@ -27,6 +27,7 @@ api = APIRouter(prefix="/api", dependencies=[Depends(auth)])
 class RecommendRequest(BaseModel):
     farmer_id: str = Field(max_length=10)
     question: str | None = Field(default=None, max_length=300)
+    demo: bool = False
 
 
 class ReviewRequest(BaseModel):
@@ -47,7 +48,7 @@ def recommend(req: RecommendRequest, request: Request):
     if not run_lock.acquire(timeout=3):
         raise HTTPException(429, "system busy, try again shortly")
     try:
-        return run_pipeline(req.farmer_id, req.question)
+        return run_pipeline(req.farmer_id, req.question, offline=True if req.demo else None)
     except GuardrailViolation as e:
         raise HTTPException(400, f"blocked by guardrail: {e}")
     except LookupError as e:
@@ -88,7 +89,7 @@ td,th{border:1px solid #ccc;padding:6px;text-align:left;vertical-align:top}.pill
 .warn{background:#ffe9b3}pre{background:#f5f5f5;padding:8px;overflow:auto;max-height:240px}</style>
 <h2>Kisan Copilot</h2>
 <select id=f></select> <input id=q placeholder="optional question" size=36> <input id=k placeholder="API key" type=password size=12>
-<button id=go>Get advice</button> <div id=out></div>
+<label><input type=checkbox id=d> Demo mode (offline, no AI)</label> <button id=go>Get advice</button> <div id=out></div>
 <script>
 const $=i=>document.getElementById(i);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -98,7 +99,7 @@ let rid='';
 async function review(d){await fetch(`/api/runs/${rid}/review`,{method:'POST',headers:H(),body:JSON.stringify({decision:d})});alert('Recorded: '+d)}
 $('go').onclick=async()=>{
  $('out').textContent='Running agents... (can take 1-2 minutes on free tiers)';
- const r=await fetch('/api/recommend',{method:'POST',headers:H(),body:JSON.stringify({farmer_id:$('f').value,question:$('q').value||null})});
+ const r=await fetch('/api/recommend',{method:'POST',headers:H(),body:JSON.stringify({farmer_id:$('f').value,question:$('q').value||null,demo:$('d').checked})});
  const j=await r.json(); if(!r.ok){$('out').textContent='Error: '+esc(j.detail);return}
  rid=j.run_id;
  $('out').innerHTML=`<p><span class="pill ${j.requires_human_review?'warn':''}">${esc(j.status)}</span> mode: ${esc(j.mode)} | confidence: ${esc(j.overall_confidence)} | agents: ${esc(j.agents_run.join(', '))} | ${esc(j.metrics.latency_s)}s</p>

@@ -77,7 +77,7 @@ def build_report(profile: dict, state: RunState, mode: str) -> FinalReport:
 
     risks = [x for x in (
         "Weather data unavailable." if w is None else None,
-        "Mandi data synthetic or unavailable." if (m is None or m.source != "agmarknet_live") else None,
+        "Mandi data synthetic or unavailable." if (m is None or m.source == "synthetic_fallback") else None,
         "Credit data unavailable." if c is None else None,
         "Insurance data unavailable." if i is None else None) if x]
     recs = recs or [Recommendation(priority=5, title="No urgent actions", detail="No urgent issues found.",
