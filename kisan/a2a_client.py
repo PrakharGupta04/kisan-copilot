@@ -29,7 +29,8 @@ def extract_text(result: dict) -> str:
     return "\n".join(t for t in out if t).strip()
 
 
-def call_insurance_agent(farmer_id: str, timeout: float = 120.0) -> str:
+def call_insurance_agent(farmer_id: str, timeout: float = 0.0) -> str:
+    timeout = timeout or float(config.A2A_TIMEOUT)
     t0 = time.perf_counter()
     log = config.LOG_DIR / "a2a_client.jsonl"
     try:

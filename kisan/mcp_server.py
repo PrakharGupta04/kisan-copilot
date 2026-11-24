@@ -1,11 +1,15 @@
 """MCP server (stdio). TOOLSET env var decides which tools this instance exposes (least privilege)."""
 import json
+import logging
 import os
+import sys
 
 from mcp.server.fastmcp import FastMCP
 
 from kisan import core_tools as ct
 from kisan.security import validate_farmer_id
+
+logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
 
 mcp = FastMCP("kisan-tools")
 TOOLSET = os.getenv("TOOLSET", "all")
