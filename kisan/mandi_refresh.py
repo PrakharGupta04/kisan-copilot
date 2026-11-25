@@ -10,7 +10,7 @@ from .core_tools import AGMARK_NAME, MANDI_RESOURCE
 
 def fetch(commodity: str, state: str, timeout: float = 25.0) -> list:
     r = httpx.get(f"https://api.data.gov.in/resource/{MANDI_RESOURCE}",
-                  params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 10,
+                  params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 50,
                           "filters[commodity]": commodity, "filters[state]": state},
                   headers={"User-Agent": "kisan-copilot/1.0", "Accept": "*/*"},
             timeout=httpx.Timeout(timeout, connect=10.0))

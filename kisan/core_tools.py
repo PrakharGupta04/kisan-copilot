@@ -101,7 +101,7 @@ def _live_mandi(commodity: str, state: str) -> Optional[list]:
     try:
         r = httpx.get(
             f"https://api.data.gov.in/resource/{MANDI_RESOURCE}",
-            params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 10,
+            params={"api-key": config.DATA_GOV_API_KEY, "format": "json", "limit": 50,
                     "filters[commodity]": commodity, "filters[state]": state},
             headers={"User-Agent": "kisan-copilot/1.0", "Accept": "*/*"},
             timeout=httpx.Timeout(15.0, connect=5.0),
@@ -182,7 +182,7 @@ def kcc_metrics(farmer_id: str) -> CreditMetrics:
     std, on_time = 9.0, 4.0
     eff = std if overdue else on_time
     since = -db.days_until(f["disbursed_date"]) if f["disbursed_date"] else 0
-    saving = round(out * (std - on_time) / 100 * max(since, 0) / 365, 0)
+    saving = 0.0 if overdue else round(out * (std - on_time) / 100 * max(since, 0) / 365, 0)
     return CreditMetrics(
         farmer_id=farmer_id, kcc_limit=limit, outstanding=out, headroom=max(limit - out, 0),
         utilization_pct=round(out / limit * 100, 1) if limit else 0.0, due_date=f["due_date"], days_to_due=dtd,

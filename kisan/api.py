@@ -92,6 +92,22 @@ def run_events(run_id: str):
     return out[:200]
 
 
+@api.get("/latest-events")
+def latest_events(since: float = 0.0):
+    files = [p for p in config.LOG_DIR.glob("*.jsonl")
+             if re.fullmatch(r"[a-f0-9]{12}", p.stem) and p.stat().st_mtime >= since]
+    if not files:
+        return []
+    p = max(files, key=lambda x: x.stat().st_mtime)
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        try:
+            out.append(json.loads(line))
+        except Exception:
+            pass
+    return out[:200]
+
+
 app.include_router(api)
 
 
