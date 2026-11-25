@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kisan Copilot</title>
+<style>
+:root{--g:#1b6b3a;--g2:#e8f4ec;--a:#b45309;--a2:#fef3c7;--r:#b91c1c;--r2:#fee2e2;--bd:#e5e7eb;--tx:#111827;--mu:#6b7280;--bg:#f6f7f5}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--tx)}
+header{background:var(--g);color:#fff;padding:18px 24px}
+header h1{margin:0;font-size:22px}
+header p{margin:4px 0 0;opacity:.85;font-size:13px}
+main{max-width:1000px;margin:0 auto;padding:16px}
+.card{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input[type=text],input[type=password]{padding:9px 10px;border:1px solid var(--bd);border-radius:8px;font-size:14px;background:#fff}
+button{padding:9px 16px;border:0;border-radius:8px;font-size:14px;cursor:pointer;background:var(--g);color:#fff;font-weight:600}
+button.sec{background:#fff;color:var(--tx);border:1px solid var(--bd)}
+button:disabled{opacity:.5;cursor:wait}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#eee}
+.ok{background:var(--g2);color:var(--g)}.warn{background:var(--a2);color:var(--a)}.bad{background:var(--r2);color:var(--r)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.stat{background:var(--bg);border-radius:10px;padding:10px}.stat b{display:block;font-size:18px}.stat span{font-size:12px;color:var(--mu)}
+.rec{border-left:4px solid var(--g);padding:10px 12px;margin:10px 0;background:#fafafa;border-radius:0 8px 8px 0}
+.rec.p1{border-color:var(--r)}.rec.p2{border-color:var(--a)}
+.chip{font-size:11px;background:var(--g2);color:var(--g);padding:2px 8px;border-radius:999px;margin-right:4px}
+.tl{list-style:none;margin:0;padding:0}.tl li{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed var(--bd);font-size:13px}
+.tl .t{width:56px;color:var(--mu);flex:none;font-variant-numeric:tabular-nums}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:4px;flex:none;background:var(--g)}
+.dot.mcp{background:#2563eb}.dot.a2a{background:#7c3aed}.dot.llm{background:#059669}.dot.warn{background:var(--a)}.dot.err{background:var(--r)}
+.wa{background:#dcf8c6;border-radius:10px;padding:10px 12px;margin:8px 0;white-space:pre-wrap;font-size:14px}
+a.btn{display:inline-block;padding:9px 16px;border-radius:8px;background:#25d366;color:#fff;font-weight:600;text-decoration:none;font-size:14px}
+.bar{height:8px;background:var(--bd);border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--g)}
+pre{background:#f3f4f6;padding:10px;border-radius:8px;overflow:auto;max-height:260px;font-size:12px}
+small,.mu{color:var(--mu)}
+h3{margin:0 0 8px;font-size:16px}
+</style>
+</head>
+<body>
+<header><h1>Kisan Copilot</h1><p>Multi-agent advisory for weather, mandi prices, KCC credit and PMFBY insurance. CrewAI + Google ADK, A2A, MCP. Synthetic farmer profiles.</p></header>
+<main>
+<div class="card">
+ <div class="row">
+  <select id="f"></select>
+  <input type="text" id="q" placeholder="Optional question, e.g. Should I sell now?" size="38" maxlength="300">
+  <label><input type="checkbox" id="d"> Demo mode (offline rules, no AI)</label>
+  <input type="password" id="k" placeholder="API key (if set)" size="12">
+  <button id="go">Get advice</button>
+ </div>
+ <div id="prof" class="mu" style="margin-top:8px;font-size:13px"></div>
+</div>
+<div id="out"></div>
+</main>
+<script>
+const $=i=>document.getElementById(i);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const H=()=>({'Content-Type':'application/json','x-api-key':$('k').value});
+let farmers=[],rid='',timer=null;
+function showProf(){const x=farmers.find(a=>a.farmer_id===$('f').value);$('prof').textContent=x?`${x.crop} | ${x.season} | ${x.district}, ${x.state}`:''}
+fetch('/api/farmers',{headers:H()}).then(r=>r.json()).then(a=>{if(!Array.isArray(a))return;farmers=a;$('f').innerHTML=a.map(x=>`<option value="${esc(x.farmer_id)}">${esc(x.farmer_id)} - ${esc(x.name)}</option>`).join('');showProf()});
+$('f').onchange=showProf;
+function step(e){
+ const k=e.kind,n=e.name||'';
+ if(k==='start')return['',`Run started for ${esc(e.farmer_id)}${e.offline?' (offline)':''}`];
+ if(k==='plan')return['',`Router selected agents: ${esc((e.selected||[]).join(', '))}. ${esc(e.rationale||'')}`];
+ if(k==='tool_call')return['mcp',`MCP tool <b>${esc(n)}</b> (${esc(e.latency_s??'?')}s)`];
+ if(k==='a2a_call')return['a2a',`A2A call to <b>${esc(n)}</b> (Google ADK agent, ${esc(e.latency_s)}s)`];
+ if(k==='specialist_done')return['llm',`CrewAI specialist <b>${esc(n)}</b> finished (${esc(e.latency_s)}s)`];
+ if(k==='task_done')return['llm',`Task completed: ${esc(n)}`];
+ if(k==='guardrail_warning')return['warn',`Guardrail warning (${esc(n)}): ${esc(e.detail||'')}`];
+ if(k==='error')return['err',`Error in ${esc(n)}: ${esc(e.error||'')}`];
+ if(k==='aborted')return['err','Run aborted'];
+ if(k==='final')return['',`Final report: ${esc(e.status)}, mode ${esc(e.mode)}, ${esc(e.latency_s)}s`];
+ return null;
+}
+function render(j,ev){
+ const m=j.metrics||{},agentic=j.mode==='agentic',conf=Math.round((j.overall_confidence||0)*100);
+ const recs=(j.recommendations||[]).slice().sort((a,b)=>a.priority-b.priority).map(x=>
+  `<div class="rec p${esc(x.priority)}"><b>${esc(x.priority)}. ${esc(x.title)}</b> <span class="mu">confidence ${Math.round((x.confidence||0)*100)}%</span><div>${esc(x.detail)}</div><div style="margin-top:4px">${(x.source_agents||[]).map(s=>`<span class="chip">${esc(s)}</span>`).join('')}</div></div>`).join('');
+ const msg=j.message;
+ const wa=msg?`${msg.hindi}\n\n${msg.english}\n\n- Kisan Copilot (AI-generated; confirm with your bank or agriculture officer)`:'';
+ const tl=(ev||[]).map(e=>[step(e),e.t]).filter(([s])=>s).map(([s,t])=>`<li><span class="t">${esc(t)}s</span><span class="dot ${s[0]}"></span><span>${s[1]}</span></li>`).join('');
+ const stats=[['Mode',j.mode],['Confidence',conf+'%'],['Latency',(m.latency_s??'?')+' s'],['LLM calls',m.llm_requests??0],['Tokens',(m.prompt_tokens||0)+(m.completion_tokens||0)],['Tool and A2A calls',m.tool_calls??0]].map(([a,b])=>`<div class="stat"><b>${esc(b)}</b><span>${a}</span></div>`).join('');
+ $('out').innerHTML=`
+ <div class="card"><div class="row"><span class="pill ${agentic?'ok':'warn'}">${agentic?'AGENTIC (CrewAI + ADK)':esc(j.mode).toUpperCase()}</span><span class="pill ${j.requires_human_review?'warn':'ok'}">${esc(j.status)}</span><span class="mu">run ${esc(j.run_id)}</span></div>
+ <div class="grid" style="margin-top:12px">${stats}</div><div class="bar" style="margin-top:10px"><i style="width:${conf}%"></i></div></div>
+ <div class="card"><h3>Summary</h3><div>${esc(j.summary)}</div></div>
+ <div class="card"><h3>Recommendations</h3>${recs}</div>
+ ${msg?`<div class="card"><h3>Farmer message</h3><div class="wa">${esc(msg.hindi)}</div><div class="wa">${esc(msg.english)}</div><div class="mu">SMS (${esc((msg.sms||'').length)}/160): ${esc(msg.sms)}</div><p><a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(wa)}">Send via WhatsApp</a> <small>Opens WhatsApp with the message prefilled. Automatic sending through the WhatsApp Cloud API is future work.</small></p></div>`:''}
+ ${(j.risks||[]).length?`<div class="card"><h3>Risks and data caveats</h3><ul>${j.risks.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
+ <div class="card"><h3>Agent trace</h3><ul class="tl">${tl||'<li>No trace events found.</li>'}</ul></div>
+ ${j.requires_human_review?`<div class="card"><h3>Human review required</h3><ul>${(j.review_reasons||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="row"><input type="text" id="rn" placeholder="Reviewer note" size="30" maxlength="500"><button onclick="review('approve')">Approve</button><button class="sec" onclick="review('reject')">Reject</button><span id="rs" class="mu"></span></div></div>`:''}
+ <div class="card"><details><summary>Tool evidence (${(j.evidence||[]).length})</summary><pre>${esc(JSON.stringify(j.evidence,null,1))}</pre></details><small>${esc(j.disclaimer)}</small></div>`;
+}
+async function review(d){
+ const r=await fetch(`/api/runs/${rid}/review`,{method:'POST',headers:H(),body:JSON.stringify({decision:d,reviewer:'officer',note:$('rn').value})});
+ $('rs').textContent=r.ok?`Recorded: ${d}`:'Could not record the review';
+}
+$('go').onclick=async()=>{
+ const b=$('go'),t0=Date.now(),demo=$('d').checked;
+ b.disabled=true;
+ $('out').innerHTML=`<div class="card"><b id="el">Running...</b><div class="mu">${demo?'Demo mode: rule engine, no AI calls (about 15 s).':'Agents are working: MCP tools, A2A insurance agent, specialists, synthesis (about 1 to 3 minutes).'}</div></div>`;
+ timer=setInterval(()=>{const el=$('el');if(el)el.textContent='Running... '+Math.round((Date.now()-t0)/1000)+' s'},500);
+ try{
+  const r=await fetch('/api/recommend',{method:'POST',headers:H(),body:JSON.stringify({farmer_id:$('f').value,question:$('q').value||null,demo})});
+  const j=await r.json();
+  if(!r.ok){$('out').innerHTML=`<div class="card"><span class="pill bad">Error</span> ${esc(j.detail||r.status)}</div>`;return}
+  rid=j.run_id;
+  let ev=[];
+  try{const e=await fetch(`/api/runs/${rid}/events`,{headers:H()});if(e.ok)ev=await e.json()}catch(_){}
+  render(j,ev);
+ }catch(e){$('out').innerHTML=`<div class="card"><span class="pill bad">Error</span> ${esc(e.message)}</div>`}
+ finally{clearInterval(timer);b.disabled=false}
+};
+</script>
+</body>
+</html>

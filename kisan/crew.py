@@ -278,6 +278,12 @@ def _agentic(profile: dict, question, state: RunState, mon: Monitor, t0: float) 
         raise RuntimeError("synthesis produced no valid structured output")
     if '"source":"synthetic_fallback"' in evidence.get("mandi", "").replace(" ", ""):
         synth.risks.append("Mandi prices are synthetic demo data, not live market prices.")
+    from .grounding import ungrounded
+    bad = ungrounded(synth, json.dumps([e.get("result", "") for e in state.evidence]), _profile_text(profile))
+    if bad:
+        synth.risks.append("Some figures could not be verified against tool data: " + ", ".join(bad[:6]))
+        synth.overall_confidence = min(synth.overall_confidence, 0.45)
+        mon.add("guardrail_warning", "grounding", detail="unverified figures", figures=bad[:6])
     stage["synthesis_s"] = round(time.perf_counter() - ts, 2)
 
     mon.counts["llm_requests"] = usage.n

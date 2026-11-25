@@ -1,4 +1,6 @@
 """FastAPI service + minimal demo page (React dashboard comes in the next phase)."""
+import json
+import re
 import threading
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
@@ -75,6 +77,21 @@ def review(run_id: str, body: ReviewRequest):
     return {"run_id": run_id, "recorded": body.decision}
 
 
+@api.get("/runs/{run_id}/events")
+def run_events(run_id: str):
+    rid = re.sub(r"[^a-f0-9]", "", run_id.lower())[:32]
+    p = config.LOG_DIR / f"{rid}.jsonl"
+    if not rid or not p.exists():
+        raise HTTPException(404, "events not found")
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        try:
+            out.append(json.loads(line))
+        except Exception:
+            pass
+    return out[:200]
+
+
 app.include_router(api)
 
 
@@ -112,4 +129,5 @@ $('go').onclick=async()=>{
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return PAGE
+    p = config.ROOT / "kisan" / "static" / "index.html"
+    return p.read_text(encoding="utf-8") if p.exists() else PAGE
