@@ -1,4 +1,4 @@
-"""FastAPI service + minimal demo page (React dashboard comes in the next phase)."""
+"""FastAPI service + single-file dashboard (kisan/static/index.html)."""
 import json
 import re
 import threading
