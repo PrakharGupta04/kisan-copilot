@@ -93,6 +93,8 @@ def _llm_task(role, goal, backstory, description, expected, mon, usage, pyd=None
     last = None
     for model in models:
         for attempt in range(2):
+            if time.perf_counter() > getattr(mon, "deadline", float("inf")):
+                raise TimeoutError("run deadline reached")
             llm_gate.before_call()
             try:
                 llm = LLM(model=model, temperature=0.1, max_tokens=2000)
@@ -115,7 +117,7 @@ def _llm_task(role, goal, backstory, description, expected, mon, usage, pyd=None
                 if kind == "daily":
                     raise llm_gate.QuotaExhausted(str(e)[:200]) from e
                 if kind in ("rpm", "unavailable") and attempt == 0:
-                    time.sleep(min(delay, 60))
+                    time.sleep(max(0.0, min(delay, 60, getattr(mon, "deadline", float("inf")) - time.perf_counter())))
                     continue
                 break  # try the next model
     raise last or RuntimeError("no LLM model configured")
@@ -189,6 +191,8 @@ def _agentic(profile: dict, question, state: RunState, mon: Monitor, t0: float) 
     ptxt = _profile_text(profile)
     fid = profile["farmer_id"]
     usage = _Usage()
+    mon.usage = usage
+    mon.deadline = t0 + config.RUN_TIMEOUT
     stage = {}
 
     # ---- 1. ROUTING (policy router; one LLM call only when the farmer asked a question) ----
@@ -322,6 +326,10 @@ def run_pipeline(farmer_id: str, question=None, offline: Optional[bool] = None) 
                     state.errors.append(f"agentic failed: {type(e).__name__}")
             if report is None:
                 report = rules.build_report(profile, state, "offline" if use_offline else "rule_based_fallback")
+        u = getattr(mon, "usage", None)
+        if u is not None and report.mode != "agentic":
+            report.metrics.update(llm_requests=u.n, prompt_tokens=u.p, completion_tokens=u.c,
+                                  partial_usage_before_fallback=True)
         report.metrics.update(latency_s=round(time.perf_counter() - t0, 2), errors=state.errors,
                               tool_calls=mon.counts["tool_calls"], log_file=str(mon.path.name))
         report = security.finalize_report(report)  # guardrail 3 + HITL

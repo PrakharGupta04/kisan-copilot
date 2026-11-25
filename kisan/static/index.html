@@ -65,7 +65,8 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const H=()=>({'Content-Type':'application/json','x-api-key':$('k').value});
 let farmers=[],rid='',timer=null;
 function showProf(){const x=farmers.find(a=>a.farmer_id===$('f').value);$('prof').textContent=x?`${x.crop} | ${x.season} | ${x.district}, ${x.state}`:''}
-fetch('/api/farmers',{headers:H()}).then(r=>r.json()).then(a=>{if(!Array.isArray(a))return;farmers=a;$('f').innerHTML=a.map(x=>`<option value="${esc(x.farmer_id)}">${esc(x.farmer_id)} - ${esc(x.name)}</option>`).join('');showProf()});
+function loadFarmers(){fetch('/api/farmers',{headers:H()}).then(r=>r.json()).then(a=>{if(!Array.isArray(a))return;farmers=a;$('f').innerHTML=a.map(x=>`<option value="${esc(x.farmer_id)}">${esc(x.farmer_id)} - ${esc(x.name)}</option>`).join('');showProf()})}
+loadFarmers();$('k').onchange=loadFarmers;
 $('f').onchange=showProf;
 function step(e){
  const k=e.kind,n=e.name||'';
@@ -103,7 +104,7 @@ function render(j,ev){
  const tl=(ev||[]).map(e=>[step(e),e.t]).filter(([s])=>s).map(([s,t])=>`<li><span class="t">${esc(t)}s</span><span class="dot ${s[0]}"></span><span>${s[1]}</span></li>`).join('');
  const stats=[['Mode',j.mode],['Confidence',conf+'%'],['Latency',(m.latency_s??'?')+' s'],['LLM calls',m.llm_requests??0],['Tokens',(m.prompt_tokens||0)+(m.completion_tokens||0)],['Tool and A2A calls',m.tool_calls??0]].map(([a,b])=>`<div class="stat"><b>${esc(b)}</b><span>${a}</span></div>`).join('');
  $('out').innerHTML=`
- <div class="card"><div class="row"><span class="pill ${agentic?'ok':'warn'}">${agentic?'AGENTIC (CrewAI + ADK)':esc(j.mode).toUpperCase()}</span><span class="pill ${j.requires_human_review?'warn':'ok'}">${esc(j.status)}</span><span class="mu">run ${esc(j.run_id)}</span></div>
+ <div class="card"><div class="row"><span class="pill ${agentic?'ok':'warn'}">${agentic?'AGENTIC (CrewAI + ADK)':esc(j.mode).toUpperCase()}</span><span class="pill ${j.requires_human_review?'warn':'ok'}">${esc(j.status)}</span><span class="mu">run ${esc(j.run_id)}</span></div>${j.mode==='rule_based_fallback'?`<div class="warn" style="margin-top:8px;padding:8px 10px;border-radius:8px;font-size:13px"><b>Fallback notice:</b> the AI pipeline did not complete, so this advice came from the rule engine. ${esc(((j.metrics||{}).errors||[]).join('; '))}</div>`:''}
  <div class="grid" style="margin-top:12px">${stats}</div><div class="bar" style="margin-top:10px"><i style="width:${conf}%"></i></div></div>
  <div class="card"><h3>Agent flow</h3>${flow(ev)}</div>
  <div class="card"><h3>Summary</h3><div>${esc(j.summary)}</div></div>
